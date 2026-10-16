@@ -52,15 +52,19 @@ class BaseEvaluator:
             except ValueError:
                 return value
 
-        if not name:
-            return {key: maybe_to_float(value) for key, value in metrics.items()}
-        metrics = {name + "_" + key: maybe_to_float(value) for key, value in metrics.items()}
-        if (
-            hasattr(self, "primary_metric")
-            and self.primary_metric is not None
-            and not self.primary_metric.startswith(name + "_")
-        ):
-            self.primary_metric = name + "_" + self.primary_metric
+        prefix = name + "_" if name else ""
+        metrics = {prefix + key: maybe_to_float(value) for key, value in metrics.items()}
+        if hasattr(self, "primary_metric") and self.primary_metric is not None:
+            primary_metric = self.primary_metric
+            # A raw name can match another prefixed metric. Remember the actual previous
+            # conversion so repeated calls do not confuse the two names.
+            previous = getattr(self, "_primary_metric_prefix", None)
+            if previous is not None and primary_metric == previous[1] and prefix + previous[0] in metrics:
+                primary_metric = previous[0]
+            prefixed_primary_metric = prefix + primary_metric
+            if prefixed_primary_metric in metrics:
+                self.primary_metric = prefixed_primary_metric
+                self._primary_metric_prefix = (primary_metric, prefixed_primary_metric)
         return metrics
 
     def store_metrics_in_model_card_data(
