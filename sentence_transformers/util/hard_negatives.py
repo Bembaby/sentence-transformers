@@ -515,13 +515,21 @@ def mine_hard_negatives(
                 print(f"[Cache] Saved corpus embeddings to {corpus_cache_file}")
 
     if use_faiss:
-        index = faiss.IndexFlatIP(model.get_embedding_dimension())
+        # Match the metric used for positive_scores and for the non-FAISS candidates below.
+        # Mixing inner products with negative distances makes score and margin filters inconsistent.
+        similarity_fn_name = model.similarity_fn_name
+        if similarity_fn_name == "euclidean":
+            index = faiss.IndexFlatL2(model.get_embedding_dimension())
+        elif similarity_fn_name == "manhattan":
+            index = faiss.IndexFlat(model.get_embedding_dimension(), faiss.METRIC_L1)
+        else:
+            index = faiss.IndexFlatIP(model.get_embedding_dimension())
         # Move the index to the GPU if available
         try:
             co = faiss.GpuMultipleClonerOptions()
             co.shard = True
             co.useFloat16 = True
-            index: faiss.IndexFlatIP = faiss.index_cpu_to_all_gpus(index, co=co)
+            index = faiss.index_cpu_to_all_gpus(index, co=co)
         except Exception:
             pass
 
@@ -534,6 +542,10 @@ def mine_hard_negatives(
             query_chunk = query_embeddings[i : i + faiss_batch_size]
             # Keep the range_max + max_positives highest scores. We offset by max_positives to leave room for the positive pair(s).
             scores, indices = index.search(query_chunk, k=range_max + max_positives)
+            if similarity_fn_name == "euclidean":
+                scores = -np.sqrt(np.maximum(scores, 0))
+            elif similarity_fn_name == "manhattan":
+                scores = -scores
             scores_list.append(scores)
             indices_list.append(indices)
         scores = torch.from_numpy(np.concatenate(scores_list, axis=0)).to(device)

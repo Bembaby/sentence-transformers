@@ -17,12 +17,40 @@ from torch import Tensor
 
 from sentence_transformers import CrossEncoder
 from sentence_transformers.sentence_transformer.model import SentenceTransformer
+from sentence_transformers.sentence_transformer.modules import BoW
 from sentence_transformers.util import cos_sim, is_datasets_available, mine_hard_negatives, pairwise_cos_sim
 
 if is_datasets_available():
     from datasets import Dataset
 else:
     pytest.skip("The datasets library is not available.", allow_module_level=True)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("faiss") is None, reason="faiss is not installed")
+@pytest.mark.parametrize("similarity_fn_name", ["cosine", "dot", "euclidean", "manhattan"])
+@pytest.mark.parametrize("absolute_margin", [None, 0.1])
+def test_faiss_mining_preserves_model_similarity(similarity_fn_name: str, absolute_margin: float | None) -> None:
+    model = SentenceTransformer(
+        modules=[BoW(["apple", "pear", "cherry"], word_weights={"cherry": 2})],
+        device="cpu",
+        similarity_fn_name=similarity_fn_name,
+    )
+    dataset = Dataset.from_dict({"query": ["apple"], "positive": ["apple"]})
+    kwargs = dict(
+        corpus=["apple apple pear", "apple pear cherry", "pear", ""],
+        num_negatives=2,
+        absolute_margin=absolute_margin,
+        output_scores=True,
+        verbose=False,
+    )
+
+    expected = mine_hard_negatives(dataset, model, use_faiss=False, **kwargs)
+    actual = mine_hard_negatives(dataset, model, use_faiss=True, **kwargs)
+
+    assert len(expected) == 2
+    assert actual["negative"] == expected["negative"]
+    torch.testing.assert_close(torch.tensor(actual["scores"]), torch.tensor(expected["scores"]))
+
 
 # Test data
 QUERIES = [
