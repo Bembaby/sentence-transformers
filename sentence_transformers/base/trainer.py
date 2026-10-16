@@ -158,6 +158,11 @@ class BaseTrainer(Trainer, ABC):
     data_collator_class = BaseDataCollator
     training_args_class = BaseTrainingArguments
 
+    # These loss attributes can be rebound independently of other loss modules. Losses with tied
+    # encoder/decoder parameters need separate handling. Keep independent encoders and guide models
+    # (e.g. ContrastiveTensionLoss.model1 and GISTEmbedLoss.guide) separate.
+    _loss_model_names = ("model", "sentence_embedder", "model2")
+
     @deprecated_kwargs(tokenizer="processing_class")
     def __init__(
         self,
@@ -423,7 +428,7 @@ class BaseTrainer(Trainer, ABC):
                 if not isinstance(loss_fn, torch.nn.Module):
                     self.loss[key] = loss_fn(model)
                 # Otherwise, we override the original model with the updated model in the loss function
-                elif hasattr(loss_fn, "model"):
+                elif any(hasattr(loss_fn, name) for name in self._loss_model_names):
                     self.loss[key] = self.override_model_in_loss(loss_fn, model)
 
         # Loss is a function accepting a model as an argument
@@ -431,7 +436,7 @@ class BaseTrainer(Trainer, ABC):
             self.loss = self.loss(model)
 
         # Loss is an initialized torch.nn.Module
-        elif hasattr(self.loss, "model"):
+        elif any(hasattr(self.loss, name) for name in self._loss_model_names):
             self.loss = self.override_model_in_loss(self.loss, model)
         return model
 
@@ -439,14 +444,14 @@ class BaseTrainer(Trainer, ABC):
         from sentence_transformers.base.model import BaseModel
 
         for name, child in loss.named_children():
-            if name == "model" and isinstance(child, BaseModel):
+            if name in self._loss_model_names and isinstance(child, BaseModel):
                 # DDP/compile wrappers don't expose BaseModel methods. Bind the ones
                 # losses call inside `forward` (CE: `preprocess`, MatryoshkaLoss:
                 # `get_embedding_dimension`).
                 for attr in ("preprocess", "get_embedding_dimension"):
                     if hasattr(child, attr) and not hasattr(model, attr):
                         setattr(model, attr, getattr(child, attr))
-                loss.model = model
+                setattr(loss, name, model)
             elif isinstance(child, torch.nn.Module):
                 setattr(loss, name, self.override_model_in_loss(child, model))
         return loss
@@ -501,10 +506,8 @@ class BaseTrainer(Trainer, ABC):
 
         # Insert the wrapped (e.g. distributed or compiled) model into the loss function,
         # if the loss stores the model. Only called once per process
-        if (
-            model == self.model_wrapped
-            and hasattr(loss_fn, "model")  # Only if the loss stores the model
-            and loss_fn.model != model  # Only if the wrapped model is not already stored
+        if model == self.model_wrapped and any(
+            getattr(loss_fn, name, model) is not model for name in self._loss_model_names
         ):
             loss_fn = self.override_model_in_loss(loss_fn, model)
         loss = loss_fn(features, labels)
