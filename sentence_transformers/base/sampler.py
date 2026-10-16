@@ -288,11 +288,9 @@ class GroupByLabelBatchSampler(DefaultBatchSampler):
         for sample_idx, label in enumerate(labels):
             groups[label].append(sample_idx)
 
-        # Keep labels with >= 2 samples. Trim each to an even count so every
-        # label contributes complete pairs in the interleaving.
-        self.groups = {
-            label: indices[: len(indices) // 2 * 2] for label, indices in groups.items() if len(indices) >= 2
-        }
+        # Keep labels with >= 2 samples. Odd groups are trimmed after shuffling
+        # each epoch, so their last sample is not permanently excluded.
+        self.groups = {label: indices for label, indices in groups.items() if len(indices) >= 2}
         if len(self.groups) < 2:
             raise ValueError(
                 "GroupByLabelBatchSampler requires at least 2 distinct labels with >= 2 samples each, "
@@ -321,7 +319,8 @@ class GroupByLabelBatchSampler(DefaultBatchSampler):
         # Shuffle samples within each label
         queues: dict[Any, deque[int]] = {}
         for label, indices in self.groups.items():
-            perm = torch.randperm(len(indices), generator=self.generator)
+            # Every label must contribute complete pairs in the interleaving.
+            perm = torch.randperm(len(indices), generator=self.generator)[: len(indices) // 2 * 2]
             queues[label] = deque(indices[i] for i in perm)
 
         # Round-robin: each label emits 2 samples per round. Stop when < 2 labels remain.
