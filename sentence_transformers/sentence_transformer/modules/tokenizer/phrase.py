@@ -63,6 +63,9 @@ class PhraseTokenizer(WordTokenizer):
     def tokenize(self, text: str, **kwargs) -> list[int]:
         from nltk import word_tokenize
 
+        if self.do_lower_case:
+            text = text.lower()
+
         tokens = word_tokenize(text, preserve_line=True)
 
         # phrase detection
