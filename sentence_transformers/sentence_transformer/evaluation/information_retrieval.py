@@ -13,6 +13,7 @@ from tqdm import trange
 
 from sentence_transformers.base.evaluation.evaluator import BaseEvaluator
 from sentence_transformers.util.similarity import SimilarityFunction
+from sentence_transformers.util.tensor import truncate_embeddings
 
 if TYPE_CHECKING:
     from sentence_transformers.base.modality_types import SingleInput
@@ -331,6 +332,13 @@ class InformationRetrievalEvaluator(BaseEvaluator):
     ) -> dict[str, float]:
         if corpus_model is None:
             corpus_model = model
+
+        if corpus_embeddings is not None:
+            truncate_dim = self.truncate_dim
+            if truncate_dim is None:
+                truncate_dim = getattr(corpus_model, "truncate_dim", None)
+            if truncate_dim is not None:
+                corpus_embeddings = truncate_embeddings(corpus_embeddings, truncate_dim)
 
         max_k = max(
             max(self.mrr_at_k),
