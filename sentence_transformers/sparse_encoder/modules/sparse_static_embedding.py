@@ -62,6 +62,14 @@ class SparseStaticEmbedding(InputModule):
         self.num_dimensions = self.weight.size(0)
         self.max_seq_length = self.tokenizer.model_max_length
 
+    @property
+    def max_seq_length(self) -> int:
+        return self.tokenizer.model_max_length
+
+    @max_seq_length.setter
+    def max_seq_length(self, value: int) -> None:
+        self.tokenizer.model_max_length = value
+
     def forward(self, features: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         input_ids = features["input_ids"]
         attention_mask = features["attention_mask"]
