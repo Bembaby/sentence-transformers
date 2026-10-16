@@ -70,22 +70,40 @@ def real_query_token_slice(model: MultiVectorEncoder, query: str) -> slice:
     # Render with the same prompt encode_query() would apply, otherwise a marker prefix like
     # ColBERT's "[Q] " lands inside the slice and pushes the last real token out of it.
     prompt = model.prompts.get("query")
-    empty_ids = transformer.preprocess([""], prompt=prompt, task="query")["input_ids"][0].tolist()
-    query_ids = transformer.preprocess([query], prompt=prompt, task="query")["input_ids"][0].tolist()
+    empty_features = transformer.preprocess([""], prompt=prompt, task="query")
+    query_features = transformer.preprocess([query], prompt=prompt, task="query")
+
+    def real_tokens_and_positions(features: dict[str, Tensor]) -> tuple[list[int], list[int]]:
+        # Flattened preprocessing omits the mask. Each call here contains exactly one
+        # query, so every packed position is a real token without any padding.
+        attention = features.get("attention_mask", torch.ones_like(features["input_ids"]))[0].bool()
+        expansion = features.get("query_expansion_positions")
+        expansion = expansion[0].bool() if expansion is not None else torch.zeros_like(attention)
+        real = attention & ~expansion
+        # encode_query retains expansion positions, but excludes ordinary padding. Map the
+        # real-token positions into that scored sequence before finding the returned slice.
+        scored_positions = (attention | expansion).long().cumsum(0) - 1
+        return features["input_ids"][0][real].tolist(), scored_positions[real].tolist()
+
+    empty_ids, _ = real_tokens_and_positions(empty_features)
+    query_ids, query_positions = real_tokens_and_positions(query_features)
 
     prefix = 0
     while prefix < min(len(empty_ids), len(query_ids)) and empty_ids[prefix] == query_ids[prefix]:
         prefix += 1
-    expansion = getattr(transformer, "query_expansion", None)
-    tokenizer = transformer.tokenizer
-    if expansion is not None and tokenizer is not None:
-        # Both renders are padded to exactly the expansion length, so the length diff is always 0.
-        # Expansion models are plain text tokenizers (the pad strategies raise on chat-template
-        # backbones), so the content length is simply the query's own token count.
-        n_content = len(tokenizer(query, add_special_tokens=False)["input_ids"])
-    else:
-        n_content = len(query_ids) - len(empty_ids)
-    return slice(prefix, prefix + n_content)
+    # Compare the suffix too: a fixed-width query may have lost content to truncation, so
+    # independently tokenizing the full query would include trailing special tokens in the slice.
+    query_stop, empty_stop = len(query_ids), len(empty_ids)
+    while query_stop > prefix and empty_stop > prefix and query_ids[query_stop - 1] == empty_ids[empty_stop - 1]:
+        query_stop -= 1
+        empty_stop -= 1
+    start = (
+        query_positions[prefix]
+        if prefix < len(query_positions)
+        else (query_positions[-1] + 1 if query_positions else 0)
+    )
+    stop = query_positions[query_stop - 1] + 1 if query_stop > prefix else start
+    return slice(start, stop)
 
 
 def get_n_patches(model: MultiVectorEncoder, image_size: tuple[int, int]) -> tuple[int, int]:
