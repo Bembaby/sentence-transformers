@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import logging
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 import torch
 from torch import Tensor, nn
 
@@ -69,3 +74,30 @@ class WordWeights(Module):
     def save(self, output_path: str, *args, safe_serialization: bool = True, **kwargs) -> None:
         self.save_config(output_path)
         self.save_torch_weights(output_path, safe_serialization=safe_serialization)
+
+    @classmethod
+    def load(
+        cls,
+        model_name_or_path: str,
+        subfolder: str = "",
+        token: bool | str | None = None,
+        cache_folder: str | None = None,
+        revision: str | None = None,
+        local_files_only: bool = False,
+        **kwargs,
+    ) -> Self:
+        hub_kwargs = {
+            "subfolder": subfolder,
+            "token": token,
+            "cache_folder": cache_folder,
+            "revision": revision,
+            "local_files_only": local_files_only,
+        }
+        model = super().load(model_name_or_path, **hub_kwargs, **kwargs)
+        # Older checkpoints contain only the initial weights in config.json.
+        if any(
+            cls.load_file_path(model_name_or_path, filename=filename, **hub_kwargs) is not None
+            for filename in ("model.safetensors", "pytorch_model.bin")
+        ):
+            model = cls.load_torch_weights(model_name_or_path, model=model, **hub_kwargs)
+        return model
