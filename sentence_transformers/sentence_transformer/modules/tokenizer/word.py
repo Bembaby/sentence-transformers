@@ -423,7 +423,7 @@ class TransformersTokenizerWrapper(WordTokenizer):
         super().__init__()
         self.tokenizer = tokenizer
 
-    def tokenize(self, sentence: str):
+    def tokenize(self, sentence: str, **kwargs) -> list[int]:
         encoded = self.tokenizer(sentence)
         return encoded["input_ids"]
 
