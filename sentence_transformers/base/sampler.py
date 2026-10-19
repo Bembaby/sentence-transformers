@@ -288,8 +288,6 @@ class GroupByLabelBatchSampler(DefaultBatchSampler):
         for sample_idx, label in enumerate(labels):
             groups[label].append(sample_idx)
 
-        # Keep labels with >= 2 samples. Odd groups are trimmed after shuffling
-        # each epoch, so their last sample is not permanently excluded.
         self.groups = {label: indices for label, indices in groups.items() if len(indices) >= 2}
         if len(self.groups) < 2:
             raise ValueError(
@@ -316,10 +314,9 @@ class GroupByLabelBatchSampler(DefaultBatchSampler):
         if self.generator and self.seed is not None:
             self.generator.manual_seed(self.seed + self.epoch)
 
-        # Shuffle samples within each label
+        # Shuffle samples within each label, then trim to complete pairs (e.g. even count).
         queues: dict[Any, deque[int]] = {}
         for label, indices in self.groups.items():
-            # Every label must contribute complete pairs in the interleaving.
             perm = torch.randperm(len(indices), generator=self.generator)[: len(indices) // 2 * 2]
             queues[label] = deque(indices[i] for i in perm)
 

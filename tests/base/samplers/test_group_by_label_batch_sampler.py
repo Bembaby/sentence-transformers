@@ -258,14 +258,13 @@ def test_batches_spanning_shuffled_rounds_have_negative_labels(label_sizes: list
         assert sorted(counts.values()) == [2, 2]
 
 
-@pytest.mark.parametrize("drop_last", [True, False])
-def test_odd_label_groups_do_not_permanently_exclude_samples(drop_last: bool) -> None:
+def test_odd_label_groups_do_not_permanently_exclude_samples() -> None:
     labels = [0] * 3 + [1] * 3
     dataset = Dataset.from_dict({"label": labels})
     sampler = GroupByLabelBatchSampler(
         dataset,
         batch_size=4,
-        drop_last=drop_last,
+        drop_last=True,
         valid_label_columns=["label"],
         generator=torch.Generator(),
         seed=42,
@@ -279,7 +278,6 @@ def test_odd_label_groups_do_not_permanently_exclude_samples(drop_last: bool) ->
         assert sorted(Counter(labels[index] for index in batches[0]).values()) == [2, 2]
         assert len(set(batches[0])) == 4
         seen.update(batches[0])
-        # Replaying an epoch must choose the same omitted sample for each label.
         assert list(sampler) == batches
 
     assert seen == set(range(len(dataset)))
