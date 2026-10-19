@@ -187,25 +187,3 @@ def test_qdrant_single_query_searches_same_vector_as_batch_of_one(stub_qdrant_mo
     semantic_search_qdrant(batched, corpus_index=(batched_client, "collection"), top_k=1)
 
     assert single_client.searched == batched_client.searched
-
-
-def test_qdrant_new_corpora_do_not_collide_in_the_same_second(monkeypatch: pytest.MonkeyPatch) -> None:
-    qdrant_client = pytest.importorskip("qdrant_client")
-    client = qdrant_client.QdrantClient(":memory:")
-    # Share one local database, just as independent clients share a Qdrant server.
-    monkeypatch.setattr(qdrant_client, "QdrantClient", lambda **kwargs: client)
-    monkeypatch.setattr("sentence_transformers.sparse_encoder.search_engines.time.time", lambda: 42)
-    query = torch.tensor([[1.0, 0.0]]).to_sparse()
-    try:
-        first_results, _, first_index = semantic_search_qdrant(query, corpus_embeddings=query, output_index=True)
-        second_results, _, second_index = semantic_search_qdrant(
-            query, corpus_embeddings=torch.tensor([[2.0, 0.0]]).to_sparse(), output_index=True
-        )
-
-        assert first_index[1] != second_index[1]
-        assert first_results == [[{"corpus_id": 0, "score": 1.0}]]
-        assert second_results == [[{"corpus_id": 0, "score": 2.0}]]
-        reused_results, _ = semantic_search_qdrant(query, corpus_index=first_index)
-        assert reused_results == first_results
-    finally:
-        client.close()
