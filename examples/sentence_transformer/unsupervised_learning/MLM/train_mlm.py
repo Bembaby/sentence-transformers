@@ -16,7 +16,6 @@ from transformers import (
     AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
-    DataCollatorForWholeWordMask,
     Trainer,
     TrainingArguments,
 )
@@ -77,6 +76,7 @@ print("Dev sentences:", len(dev_sentences))
 
 
 # A dataset wrapper, that tokenizes our data on-the-fly
+# Whole-word masking needs offset mappings, which the collator does not pad, so pad those inputs to max_length
 class TokenizedSentencesDataset:
     def __init__(self, sentences, tokenizer, max_length, cache_tokenization=False):
         self.tokenizer = tokenizer
@@ -92,6 +92,8 @@ class TokenizedSentencesDataset:
                 truncation=True,
                 max_length=self.max_length,
                 return_special_tokens_mask=True,
+                return_offsets_mapping=do_whole_word_mask,
+                padding="max_length" if do_whole_word_mask else False,
             )
 
         if isinstance(self.sentences[item], str):
@@ -101,6 +103,8 @@ class TokenizedSentencesDataset:
                 truncation=True,
                 max_length=self.max_length,
                 return_special_tokens_mask=True,
+                return_offsets_mapping=do_whole_word_mask,
+                padding="max_length" if do_whole_word_mask else False,
             )
         return self.sentences[item]
 
@@ -118,16 +122,16 @@ dev_dataset = (
 
 ##### Training arguments
 
-if do_whole_word_mask:
-    data_collator = DataCollatorForWholeWordMask(tokenizer=tokenizer, mlm=True, mlm_probability=mlm_prob)
-else:
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=True, mlm_probability=mlm_prob)
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer, mlm=True, mlm_probability=mlm_prob, whole_word_mask=do_whole_word_mask
+)
 
 training_args = TrainingArguments(
     output_dir=output_dir,
-    overwrite_output_dir=True,
     num_train_epochs=num_train_epochs,
-    evaluation_strategy="steps" if dev_dataset is not None else "no",
+    eval_strategy="steps" if dev_dataset is not None else "no",
+    # Keep offset_mapping for the whole-word masking collator, which removes it before the forward pass
+    remove_unused_columns=False,
     per_device_train_batch_size=per_device_train_batch_size,
     eval_steps=save_steps,
     save_steps=save_steps,
