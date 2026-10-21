@@ -636,9 +636,9 @@ Sometimes you don't have the required evaluation data to prepare one of these ev
 
     If you evaluate after training, but before saving the model, your automatically generated model card will still include the test results.
 
-.. warning::
+.. note::
 
-    When using `Distributed Training <training/distributed.html>`_, the evaluator only runs on the first device, unlike the training and evaluation datasets, which are shared across all devices. 
+    During `Distributed Data Parallel (DDP) training <training/distributed.html>`_, the trainer shares evaluator inference across the existing processes. Process zero computes the metrics and writes the evaluation output once, then broadcasts the metrics to every process. Calling an evaluator directly outside the trainer keeps its normal single-process behavior, so calling it from every DDP process repeats the evaluation. See the distributed training guide for limitations, including FSDP and DeepSpeed.
 ```
 
 ## Trainer
