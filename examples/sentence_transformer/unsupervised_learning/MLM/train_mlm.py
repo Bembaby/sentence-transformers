@@ -75,8 +75,8 @@ if len(sys.argv) >= 4:
 print("Dev sentences:", len(dev_sentences))
 
 
-# A dataset wrapper, that tokenizes our data on-the-fly
-# Whole-word masking needs offset mappings, which the collator does not pad, so pad those inputs to max_length
+# Pad offsets during tokenization because tokenizer.pad does not pad them.
+# https://github.com/huggingface/transformers/issues/18681
 class TokenizedSentencesDataset:
     def __init__(self, sentences, tokenizer, max_length, cache_tokenization=False):
         self.tokenizer = tokenizer

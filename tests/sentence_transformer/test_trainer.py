@@ -107,7 +107,7 @@ def test_mlm_example_trains_with_transformers_v5(tmp_path: Path, monkeypatch: py
 
     assert result["trainer"].state.global_step == 3
     assert (Path(result["output_dir"]) / "model.safetensors").exists()
-    weights = result["model"].bert.embeddings.word_embeddings.weight
+    weights = result["model"].bert.embeddings.word_embeddings.weight.detach().cpu()
     assert torch.isfinite(weights).all()
     assert not torch.equal(weights, initial_model.bert.embeddings.word_embeddings.weight)
     assert (result["dev_dataset"] is not None) == with_dev

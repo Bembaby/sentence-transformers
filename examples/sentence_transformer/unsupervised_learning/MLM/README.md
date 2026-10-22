@@ -22,4 +22,6 @@ python train_mlm.py distilbert-base path/train.txt path/dev.txt
 
 Each line in train.txt / dev.txt is interpreted as one input for the transformer network, i.e. as one sentence or paragraph.
 
+Whole-word masking is enabled by default. In Transformers v5, every token selected for masking is replaced with `[MASK]`, instead of the previous 80% mask / 10% random / 10% unchanged split. Set `do_whole_word_mask = False` in the script to use token-level masking with the 80/10/10 split.
+
 For more information how to run MLM with huggingface transformers, see the [Language model training examples](https://github.com/huggingface/transformers/tree/main/examples/pytorch/language-modeling).
