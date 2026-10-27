@@ -151,7 +151,7 @@ As you can see, the similarity between the related sentences is much higher than
 
 ## Evaluation during training
 
-To track a reduced layer count during training, you can subclass an evaluator so that it slices the layers temporarily and restores them afterwards. This uses the MPNet layer path from [Inference](#inference); other architectures store their layers elsewhere.
+To evaluate with fewer layers during training, temporarily remove the later layers and restore them afterwards. The subclass below uses the MPNet layer path from [Inference](#inference). You'll have to adapt this path for other architectures.
 
 ```python
 from sentence_transformers.sentence_transformer.evaluation import EmbeddingSimilarityEvaluator
@@ -172,7 +172,9 @@ class MPNetLayerEvaluator(EmbeddingSimilarityEvaluator):
             encoder.layer = all_layers
 ```
 
-Create it like the `dev_evaluator` in [adaptive_layer_sts.py](adaptive_layer_sts.py), adding `num_layers` and a distinct `name`, and pass it to the trainer. To track several layer counts, combine one evaluator per count in a [SequentialEvaluator](../../../../docs/package_reference/base/evaluation.rst). This only works in single-process training: with DDP, custom evaluator code runs on process zero, while the other processes still encode with all layers (see [Distributed Training](../../../../docs/sentence_transformer/training/distributed.rst)).
+Create it like the `dev_evaluator` in [adaptive_layer_sts.py](adaptive_layer_sts.py), adding `num_layers`, and pass it to the trainer. To evaluate several layer counts, combine evaluators with distinct names in a [SequentialEvaluator](../../../../docs/package_reference/base/evaluation.rst).
+
+Use this subclass only for single-process training. With [DDP](../../../../docs/sentence_transformer/training/distributed.rst), only process zero truncates the model, so evaluation would mix embeddings from different layer counts.
 
 ## Code Examples
 
